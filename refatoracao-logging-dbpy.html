@@ -1,0 +1,311 @@
+<title>Refatoração de Logging em db.py</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --ground:#eef0f3;
+    --surface:#ffffff;
+    --surface-2:#f5f6f8;
+    --ink:#1a1f26;
+    --ink-2:#566072;
+    --ink-3:#8892a0;
+    --rule:#d9dde3;
+    --accent:#2d4a7c;
+    --accent-2:#4a6ba0;
+    --add:#1f6b43;
+    --add-bg:#e8f3ec;
+    --add-mk:#bfe0c9;
+    --del:#a8382c;
+    --del-bg:#f7eae7;
+    --del-mk:#e6b8b1;
+    --warn:#9a6b1a;
+    --warn-bg:#f5eed9;
+    --mono:"IBM Plex Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#151922;
+      --surface:#1c2230;
+      --surface-2:#232a38;
+      --ink:#e7eaf0;
+      --ink-2:#a4adbd;
+      --ink-3:#737d8d;
+      --rule:#2c3340;
+      --accent:#8fb4e8;
+      --accent-2:#a8c4ed;
+      --add:#74cf95;
+      --add-bg:#1d2b25;
+      --add-mk:#2f5b46;
+      --del:#e88a7e;
+      --del-bg:#2d1d1a;
+      --del-mk:#6e3a32;
+      --warn:#d9b366;
+      --warn-bg:#2c2616;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#151922; --surface:#1c2230; --surface-2:#232a38;
+    --ink:#e7eaf0; --ink-2:#a4adbd; --ink-3:#737d8d;
+    --rule:#2c3340; --accent:#8fb4e8; --accent-2:#a8c4ed;
+    --add:#74cf95; --add-bg:#1d2b25; --add-mk:#2f5b46;
+    --del:#e88a7e; --del-bg:#2d1d1a; --del-mk:#6e3a32;
+    --warn:#d9b366; --warn-bg:#2c2616;
+  }
+  *{box-sizing:border-box}
+  html{background:var(--ground)}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:15.5px; line-height:1.62;
+    padding:40px 20px 80px;
+  }
+  .wrap{max-width:880px; margin:0 auto}
+
+  /* header */
+  .eyebrow{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 14px;
+  }
+  h1{
+    font-family:var(--sans); font-weight:600; font-size:32px; line-height:1.18;
+    letter-spacing:-.012em; margin:0 0 12px; text-wrap:balance; color:var(--ink);
+  }
+  .lede{
+    font-size:16.5px; line-height:1.6; color:var(--ink-2); margin:0 0 28px;
+    max-width:62ch;
+  }
+  .lede code{font-family:var(--mono); font-size:.92em; color:var(--accent)}
+
+  /* stat strip */
+  .stats{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+    background:var(--rule); border:1px solid var(--rule); border-radius:8px;
+    overflow:hidden; margin:0 0 8px;
+  }
+  .stat{background:var(--surface); padding:14px 16px}
+  .stat .n{
+    font-family:var(--mono); font-size:24px; font-weight:600; color:var(--ink);
+    font-variant-numeric:tabular-nums; line-height:1;
+  }
+  .stat .l{
+    font-size:11.5px; color:var(--ink-2); margin-top:6px; line-height:1.35;
+  }
+  .stats-note{font-size:12.5px; color:var(--ink-3); margin:0 0 40px; font-family:var(--mono)}
+
+  /* sections */
+  section{margin:0 0 44px}
+  .grp{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 18px;
+    padding-bottom:8px; border-bottom:1px solid var(--rule);
+  }
+  .blk{margin:0 0 30px}
+  .blk-head{display:flex; align-items:baseline; gap:12px; margin:0 0 8px; flex-wrap:wrap}
+  .blk-head .fn{
+    font-family:var(--mono); font-size:15px; font-weight:600; color:var(--ink);
+  }
+  .blk-head .tag{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.06em;
+    text-transform:uppercase; padding:2px 7px; border-radius:3px;
+    background:var(--surface-2); color:var(--ink-2); border:1px solid var(--rule);
+  }
+  .tag.warn{background:var(--warn-bg); color:var(--warn); border-color:transparent}
+  .tag.err{background:var(--del-bg); color:var(--del); border-color:transparent}
+  .tag.add{background:var(--add-bg); color:var(--add); border-color:transparent}
+  .ba{font-size:13.5px; line-height:1.55; color:var(--ink-2); margin:0 0 12px}
+  .ba strong{color:var(--ink); font-weight:600}
+  .ba code{font-family:var(--mono); font-size:.9em; color:var(--accent)}
+
+  /* diff */
+  .diff{
+    margin:0; background:var(--surface); border:1px solid var(--rule);
+    border-radius:6px; overflow-x:auto; font-family:var(--mono);
+    font-size:12.8px; line-height:1.7; padding:2px 0;
+  }
+  .diff code{display:block; white-space:pre}
+  .diff .ln{display:inline-block; min-width:44px; padding-right:10px;
+    text-align:right; color:var(--ink-3); user-select:none; -webkit-user-select:none}
+  .diff .row{display:block; padding:1px 16px 1px 8px; white-space:pre}
+  .diff .row.ctx{color:var(--ink-2); border-left:3px solid transparent}
+  .diff .row.add{background:var(--add-bg); color:var(--add); border-left:3px solid var(--add-mk)}
+  .diff .row.del{background:var(--del-bg); color:var(--del); border-left:3px solid var(--del-mk)}
+  .diff .row.hk{color:var(--ink-3); font-weight:600; border-left:3px solid transparent; padding-top:8px}
+  .diff .row.hk:first-child{padding-top:2px}
+
+  /* pattern table */
+  .ptbl{border:1px solid var(--rule); border-radius:6px; overflow:hidden; margin:0 0 6px}
+  .ptbl table{border-collapse:collapse; width:100%; font-size:13px}
+  .ptbl th,.ptbl td{padding:9px 14px; text-align:left; vertical-align:top}
+  .ptbl th{
+    background:var(--surface-2); font-family:var(--mono); font-size:11px;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3);
+    font-weight:500; border-bottom:1px solid var(--rule);
+  }
+  .ptbl td{border-top:1px solid var(--rule); color:var(--ink-2)}
+  .ptbl td.fn{font-family:var(--mono); color:var(--ink); font-size:12.5px; white-space:nowrap}
+  .ptbl td.rt{font-family:var(--mono); color:var(--accent); font-size:12.5px}
+  .ptbl tr:hover td{background:var(--surface-2)}
+  .ptbl-wrap{overflow-x:auto}
+
+  .note{
+    font-size:13px; color:var(--ink-2); background:var(--surface-2);
+    border-left:3px solid var(--accent); padding:12px 16px; border-radius:0 4px 4px 0;
+    margin:0 0 30px;
+  }
+  .note code{font-family:var(--mono); font-size:.9em; color:var(--accent)}
+
+  footer{
+    margin-top:48px; padding-top:18px; border-top:1px solid var(--rule);
+    font-size:12.5px; color:var(--ink-3); font-family:var(--mono);
+    display:flex; gap:18px; flex-wrap:wrap;
+  }
+  @media (max-width:560px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    h1{font-size:26px}
+    .lede{font-size:15px}
+    .diff{font-size:11.8px}
+    .diff .ln{display:none}
+  }
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">Relatório de refatoração · commit de referência: 8b8f3f6</p>
+  <h1>Refatoração de Logging em db.py</h1>
+  <p class="lede">
+    Substitui o tratamento silencioso de erros por <code>logging</code> estruturado,
+    amplia os blocos <code>try/except</code> para capturar exceções completas e registra
+    toda falha inesperada em nível <code>ERROR</code> com traceback. O mapeamento
+    prévio confirmou que o arquivo <strong>não continha prints</strong> — a camada é
+    pura acesso a dados; a mudança incide sobre os 15 blocos <code>try/except/finally</code>.
+  </p>
+
+  <div class="stats">
+    <div class="stat"><div class="n">15</div><div class="l">funções alteradas</div></div>
+    <div class="stat"><div class="n">13</div><div class="l">cláusulas <code style="font-family:var(--mono)">except Exception</code> adicionadas</div></div>
+    <div class="stat"><div class="n">1</div><div class="l">logger de módulo configurado</div></div>
+    <div class="stat"><div class="n">0</div><div class="l">prints (não havia nenhum)</div></div>
+  </div>
+  <p class="stats-note">Níveis: WARNING p/ violações esperadas (UNIQUE/FK) · ERROR p/ exceções inesperadas · ValueError permanece silencioso</p>
+
+  <!-- A: logger setup -->
+  <section>
+    <p class="grp">A · Configuração do logger</p>
+    <div class="blk">
+      <div class="blk-head">
+        <span class="fn">cabeçalho do módulo</span>
+        <span class="tag add">adicionado</span>
+      </div>
+      <p class="ba"><strong>Antes:</strong> nenhum <code>logging</code>; erros propagavam sem registro ou eram engolidos em <code>return False</code> sem distinguir causa. <strong>Depois:</strong> importa <code>logging</code>, configura um handler no nível <code>WARNING</code> e cria <code>logger = logging.getLogger(__name__)</code>. O nível WARNING deixa passar WARNING e ERROR, sem ruído de DEBUG/INFO. O app hospedeiro (Tkinter/Flask) pode reconfigurar nível e handler antes de importar o módulo.</p>
+<pre class="diff"><code><div class="row ctx"><span class="ln"></span> import os</div><div class="row add"><span class="ln">+</span>import logging</div><div class="row ctx"><span class="ln"></span> import sqlite3</div><div class="row ctx"><span class="ln"></span> import datetime</div><div class="row ctx"><span class="ln"></span> </div><div class="row ctx"><span class="ln"></span> BASE_DIR = os.path.dirname(os.path.abspath(__file__))</div><div class="row ctx"><span class="ln"></span> DB_PATH = os.path.join(BASE_DIR, "controle_suprimentos.db")</div><div class="row ctx"><span class="ln"></span> </div><div class="row add"><span class="ln">+</span># Logger do módulo — WARNING por padrão; ERROR para exceções inesperadas.</div><div class="row add"><span class="ln">+</span>logging.basicConfig(</div><div class="row add"><span class="ln">+</span>    level=logging.WARNING,</div><div class="row add"><span class="ln">+</span>    format="%(asctime)s %(levelname)s %(name)s:%(lineno)d — %(message)s",</div><div class="row add"><span class="ln">+</span>)</div><div class="row add"><span class="ln">+</span>logger = logging.getLogger(__name__)</div></code></pre>
+    </div>
+  </section>
+
+  <!-- B: init_db -->
+  <section>
+    <p class="grp">B · Casos especiais — init_db, estoque_atual, dashboard_stats</p>
+
+    <div class="blk">
+      <div class="blk-head">
+        <span class="fn">init_db()</span>
+        <span class="tag err">ERROR · re-raise</span>
+      </div>
+      <p class="ba"><strong>Antes:</strong> <code>executescript</code> + <code>commit</code> + <code>close</code> soltos, sem <code>try</code>. Um erro de schema propagava sem log e podia deixar a conexão aberta. <strong>Depois:</strong> envolve em <code>try/except sqlite3.Error/finally</code>, loga com <code>logger.exception</code> (ERROR + traceback) e <strong>re-levanta</strong> — falha na criação do schema é fatal; o chamador precisa saber.</p>
+<pre class="diff"><code><div class="row ctx"><span class="ln"></span> def init_db():</div><div class="row ctx"><span class="ln"></span>     conn = get_conn()</div><div class="row add"><span class="ln">+</span>    try:</div><div class="row del"><span class="ln">-</span>    conn.executescript("""...""")</div><div class="row add"><span class="ln">+</span>        conn.executescript("""...""")</div><div class="row del"><span class="ln">-</span>    conn.commit()</div><div class="row del"><span class="ln">-</span>    conn.close()</div><div class="row add"><span class="ln">+</span>        conn.commit()</div><div class="row add"><span class="ln">+</span>    except sqlite3.Error:</div><div class="row add"><span class="ln">+</span>        logger.exception("Erro ao inicializar o banco de dados em %s", DB_PATH)</div><div class="row add"><span class="ln">+</span>        raise</div><div class="row add"><span class="ln">+</span>    finally:</div><div class="row add"><span class="ln">+</span>        conn.close()</div></code></pre>
+    </div>
+
+    <div class="blk">
+      <div class="blk-head">
+        <span class="fn">estoque_atual()</span>
+        <span class="tag err">reestruturação</span>
+      </div>
+      <p class="ba"><strong>Antes:</strong> o loop que monta <code>result</code> ficava <em>fora</em> do <code>try/finally</code> — um <code>KeyError</code> ali propagava sem proteção e sem log. <strong>Depois:</strong> o bloco de montagem entra no <code>try</code>, e um <code>except Exception</code> loga em ERROR retornando <code>[]</code>. Correção estrutural, não apenas estética.</p>
+<pre class="diff"><code><div class="row ctx"><span class="ln"></span>     try:</div><div class="row ctx"><span class="ln"></span>         rows = conn.execute("""...""").fetchall()</div><div class="row del"><span class="ln">-</span> </div><div class="row del"><span class="ln">-</span>     finally:</div><div class="row del"><span class="ln">-</span>         conn.close()</div><div class="row del"><span class="ln">-</span> </div><div class="row del"><span class="ln">-</span>     result = []</div><div class="row del"><span class="ln">-</span>     for r in rows:</div><div class="row del"><span class="ln">-</span>         saldo = r["ent"] - r["sai"]</div><div class="row del"><span class="ln">-</span>         result.append({...})</div><div class="row del"><span class="ln">-</span>     return result</div><div class="row add"><span class="ln">+</span>        result = []</div><div class="row add"><span class="ln">+</span>        for r in rows:</div><div class="row add"><span class="ln">+</span>            saldo = r["ent"] - r["sai"]</div><div class="row add"><span class="ln">+</span>            result.append({...})</div><div class="row add"><span class="ln">+</span>        return result</div><div class="row add"><span class="ln">+</span>    except Exception:</div><div class="row add"><span class="ln">+</span>        logger.exception("Erro ao calcular estoque atual")</div><div class="row add"><span class="ln">+</span>        return []</div><div class="row add"><span class="ln">+</span>    finally:</div><div class="row add"><span class="ln">+</span>        conn.close()</div></code></pre>
+    </div>
+
+    <div class="blk">
+      <div class="blk-head">
+        <span class="fn">dashboard_stats()</span>
+        <span class="tag err">fallback estruturado</span>
+      </div>
+      <p class="ba"><strong>Antes:</strong> só <code>try/finally</code>; qualquer falha propagava para a UI, que poderia quebrar com <code>KeyError</code> ao acessar chaves inexistentes. <strong>Depois:</strong> <code>except Exception</code> loga em ERROR e retorna um dict neutro com todas as chaves zeradas — a UI recebe a mesma forma, exibindo zeros em vez de travar.</p>
+<pre class="diff"><code><div class="row ctx"><span class="ln"></span>         return {</div><div class="row ctx"><span class="ln"></span>             "total_filiais": total_filiais, ...</div><div class="row ctx"><span class="ln"></span>             "ult_entradas": ult_ent,</div><div class="row ctx"><span class="ln"></span>         }</div><div class="row add"><span class="ln">+</span>    except Exception:</div><div class="row add"><span class="ln">+</span>        logger.exception("Erro ao gerar estatisticas do dashboard")</div><div class="row add"><span class="ln">+</span>        return {</div><div class="row add"><span class="ln">+</span>            "total_filiais": 0, "total_deptos": 0, "total_itens": 0,</div><div class="row add"><span class="ln">+</span>            "total_entradas": 0, "total_despachos": 0,</div><div class="row add"><span class="ln">+</span>            "saldo_litros": 0, "saldo_unidades": 0,</div><div class="row add"><span class="ln">+</span>            "alertas": [], "ult_despachos": [], "ult_entradas": [],</div><div class="row add"><span class="ln">+</span>        }</div><div class="row ctx"><span class="ln"></span>     finally:</div><div class="row ctx"><span class="ln"></span>         conn.close()</div></code></pre>
+    </div>
+  </section>
+
+  <!-- C: date converters -->
+  <section>
+    <p class="grp">C · Conversores de data — ValueError mantido + Exception de reforço</p>
+    <p class="ba">As duas funções já tratavam <code>ValueError</code> (formato inválido) como caso esperado e silencioso. O refactor <strong>não</strong> loga o <code>ValueError</code> — isso poluiria o log com entradas de usuário inválidas. Adiciona <code>except Exception</code> para capturar falhas inesperadas (ex.: <code>AttributeError</code> se o argumento não for string) e logá-las em ERROR.</p>
+
+    <div class="blk">
+      <div class="blk-head"><span class="fn">to_iso(data_br)</span><span class="tag err">+ except Exception</span></div>
+<pre class="diff"><code><div class="row ctx"><span class="ln"></span>     try:</div><div class="row ctx"><span class="ln"></span>         d = datetime.datetime.strptime(data_br.strip(), "%d/%m/%Y")</div><div class="row ctx"><span class="ln"></span>         return d.strftime("%Y-%m-%d")</div><div class="row ctx"><span class="ln"></span>     except ValueError:</div><div class="row ctx"><span class="ln"></span>         return None</div><div class="row add"><span class="ln">+</span>    except Exception:</div><div class="row add"><span class="ln">+</span>        logger.exception("Erro inesperado ao converter data BR-&gt;ISO: %r", data_br)</div><div class="row add"><span class="ln">+</span>        return None</div></code></pre>
+    </div>
+
+    <div class="blk">
+      <div class="blk-head"><span class="fn">to_display(data_iso)</span><span class="tag err">+ except Exception</span></div>
+<pre class="diff"><code><div class="row ctx"><span class="ln"></span>     try:</div><div class="row ctx"><span class="ln"></span>         d = datetime.datetime.strptime(data_iso.strip(), "%Y-%m-%d")</div><div class="row ctx"><span class="ln"></span>         return d.strftime("%d/%m/%Y")</div><div class="row ctx"><span class="ln"></span>     except ValueError:</div><div class="row ctx"><span class="ln"></span>         return data_iso</div><div class="row add"><span class="ln">+</span>    except Exception:</div><div class="row add"><span class="ln">+</span>        logger.exception("Erro inesperado ao converter data ISO-&gt;display: %r", data_iso)</div><div class="row add"><span class="ln">+</span>        return data_iso</div></code></pre>
+    </div>
+  </section>
+
+  <!-- D: write ops -->
+  <section>
+    <p class="grp">D · Operações de escrita — IntegrityError (WARNING) + Exception (ERROR)</p>
+    <p class="ba">As três funções já capturavam <code>sqlite3.IntegrityError</code> para devolver <code>False</code> à UI (duplicidade/FK). O refactor <strong>preserva</strong> esse contrato e o torna explícito: o <code>IntegrityError</code> agora é logado em <code>WARNING</code> (caso esperado de regra de negócio), e um <code>except Exception</code> cobre falhas não-previstas em <code>ERROR</code>. A UI continua recebendo <code>False</code> em ambos, mas agora a causa é auditável.</p>
+
+    <div class="blk">
+      <div class="blk-head"><span class="fn">inserir(tabela, nome)</span><span class="tag warn">WARNING</span> <span class="tag err">ERROR</span></div>
+<pre class="diff"><code><div class="row ctx"><span class="ln"></span>     except sqlite3.IntegrityError as exc:</div><div class="row ctx"><span class="ln"></span>         return False</div><div class="row add"><span class="ln">+</span>        logger.warning("IntegrityError ao inserir em %r (%r): %s", tabela, nome, exc)</div><div class="row add"><span class="ln">+</span>        return False</div><div class="row add"><span class="ln">+</span>    except Exception:</div><div class="row add"><span class="ln">+</span>        logger.exception("Erro inesperado ao inserir em %r (%r)", tabela, nome)</div><div class="row add"><span class="ln">+</span>        return False</div><div class="row ctx"><span class="ln"></span>     finally:</div><div class="row ctx"><span class="ln"></span>         conn.close()</div></code></pre>
+    </div>
+
+    <div class="note">Os mesmos dois cláusulas (WARNING no <code>IntegrityError</code> + ERROR no <code>Exception</code>) foram aplicados a <code>inserir_item(nome, tipo, estoque_minimo)</code> e <code>excluir(tabela, item_id)</code>. O contrato <code>return False</code> é idêntico; a diferença é que <code>excluir</code> loga o <code>item_id</code> em vez de <code>nome</code>.</div>
+
+    <div class="blk">
+      <div class="blk-head"><span class="fn">inserir_entrada(...)</span><span class="tag err">ERROR</span> <span class="tag add">try/except/finally</span></div>
+      <p class="ba"><strong>Antes:</strong> só <code>try/finally</code> — falha na inserção propagava sem log para o chamador. <strong>Depois:</strong> <code>except Exception</code> loga a falha com contexto (<code>item_id</code>, <code>quantidade</code>) e <em>não</em> re-levanta, pois a UI Tkinter não tratava a exceção original.</p>
+<pre class="diff"><code><div class="row ctx"><span class="ln"></span>         conn.commit()</div><div class="row add"><span class="ln">+</span>    except Exception:</div><div class="row add"><span class="ln">+</span>        logger.exception(</div><div class="row add"><span class="ln">+</span>            "Erro inesperado ao inserir entrada (item_id=%s, qtd=%s)",</div><div class="row add"><span class="ln">+</span>            item_id, quantidade,</div><div class="row add"><span class="ln">+</span>        )</div><div class="row ctx"><span class="ln"></span>     finally:</div><div class="row ctx"><span class="ln"></span>         conn.close()</div></code></pre>
+    </div>
+    <p class="ba">O mesmo padrão (<code>try/except Exception/finally</code> com log contextual) foi aplicado a <code>inserir_despacho(...)</code>, que loga <code>item_id</code>, <code>filial_id</code> e <code>quantidade</code>.</p>
+  </section>
+
+  <!-- E: read queries -->
+  <section>
+    <p class="grp">E · Consultas de leitura — try/finally → try/except/finally</p>
+    <p class="ba">Sete funções de consulta seguiam o mesmo padrão: <code>try</code> com <code>return rows</code> + <code>finally: conn.close()</code>, sem <code>except</code>. O refactor adiciona <code>except Exception</code> a todas, logando em ERROR e retornando um valor neutro (lista vazia ou zero) para a UI não quebrar. O bloco abaixo mostra o padrão uma vez; a tabela lista cada função com seu retorno de falha.</p>
+
+    <div class="blk">
+      <div class="blk-head"><span class="fn">saldo_atual(item_id)</span><span class="tag err">retorna 0</span> <span class="tag">representante</span></div>
+<pre class="diff"><code><div class="row ctx"><span class="ln"></span>         return entradas - saidas</div><div class="row add"><span class="ln">+</span>    except Exception:</div><div class="row add"><span class="ln">+</span>        logger.exception("Erro ao calcular saldo do item_id=%s", item_id)</div><div class="row add"><span class="ln">+</span>        return 0</div><div class="row ctx"><span class="ln"></span>     finally:</div><div class="row ctx"><span class="ln"></span>         conn.close()</div></code></pre>
+    </div>
+
+    <div class="ptbl-wrap">
+    <div class="ptbl">
+      <table>
+        <thead>
+          <tr><th>Função</th><th>Contexto do log</th><th>Retorno em falha</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="fn">saldo_itens()</td><td>"Erro ao calcular saldo de todos os itens"</td><td class="rt">{}</td></tr>
+          <tr><td class="fn">listar(tabela)</td><td>"Erro ao listar tabela %r", tabela</td><td class="rt">[]</td></tr>
+          <tr><td class="fn">listar_itens()</td><td>"Erro ao listar itens"</td><td class="rt">[]</td></tr>
+          <tr><td class="fn">ultimas_entradas(limite)</td><td>"Erro ao listar ultimas entradas (limite=%s)", limite</td><td class="rt">[]</td></tr>
+          <tr><td class="fn">ultimos_despachos(limite)</td><td>"Erro ao listar ultimos despachos (limite=%s)", limite</td><td class="rt">[]</td></tr>
+          <tr><td class="fn">relatorio_despachos(filtro)</td><td>"Erro ao gerar relatorio de despachos (filtro=%r)", filtro</td><td class="rt">[]</td></tr>
+        </tbody>
+      </table>
+    </div>
+    </div>
+  </section>
+
+  <div class="note">
+    <strong>Decisão de design:</strong> exceções inesperadas são <em>engolidas</em> (log + valor neutro) em vez de propagadas, porque a UI Tkinter original não tratava exceções vindas desta camada — propagar quebraria a tela. A exceção é <code>init_db()</code>, que <strong>re-levanta</strong> após logar, pois falha de schema é irrecuperável. Se no futuro a UI passar a tratar exceções, basta remover os <code>return</code> neutros e adicionar <code>raise</code>.
+  </div>
+
+  <footer>
+    <span>arquivo: db.py</span>
+    <span>commit base: 8b8f3f6 (master)</span>
+    <span>sintaxe validada: py -3 -m py_compile</span>
+  </footer>
+
+</div>

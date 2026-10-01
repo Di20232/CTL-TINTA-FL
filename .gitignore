@@ -1,25 +1,60 @@
-# Dependencies
-node_modules/
-__pycache__/
-*.pyc
+# Defaults e cross-platform
+.web
+*.db
+*.db.bak*
+*.sqlite*
+*.sqlite3
+assets/external/
+assets/*.png
+assets/*.jpg
+assets/*.jpeg
+assets/*.gif
+assets/*.bmp
+assets/*.svg
+*.py[cod]
+.states
 
-# Environment
-.env
-.env.local
-.env.*.local
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
+# Backups, lock e exportações
+*.bak
+*.csv
+reflex.lock/
+*.log
+*.tmp
 *.swp
 *.swo
 
-# Claude Code
-.claude/settings.local.json
-
 # Logs
 *.log
+*.out
+
+# Environment/secrets
+.env
+.env.*
+.env.local
+.env.production
+.env.*.local
+secrets.*
+*.key
+*.pem
+.settings
+settings.json
+settings.local.json
+
+# IDE/Editor
+.vscode/
+.idea/
+
+# OS & misc
+.DS_Store
+Thumbs.db
+
+# Screenshots e documentos internos
+screenshots/
+doc/
+docs/
+leia-me.*
+instrucoes*
+resumo*
+
+# Claude Code
+.claude/settings.local.json
