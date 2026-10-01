@@ -7,6 +7,7 @@ Separada do app Tkinter para reutilização com Flask.
 
 import os
 import logging
+import math
 import sqlite3
 import datetime
 
@@ -86,6 +87,19 @@ def init_db():
                 recebido_por TEXT,
                 observacao TEXT
             );
+
+            -- Guardas no proprio banco (CHECK nao se aplica a tabelas ja criadas).
+            CREATE TRIGGER IF NOT EXISTS trg_entradas_valida BEFORE INSERT ON entradas
+            WHEN NEW.quantidade <= 0 OR NEW.valor_unitario < 0
+            BEGIN SELECT RAISE(ABORT, 'entrada: quantidade/valor invalido'); END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_despachos_valida BEFORE INSERT ON despachos
+            WHEN NEW.quantidade <= 0
+            BEGIN SELECT RAISE(ABORT, 'despacho: quantidade invalida'); END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_itens_valida BEFORE INSERT ON itens
+            WHEN NEW.estoque_minimo < 0
+            BEGIN SELECT RAISE(ABORT, 'item: estoque minimo negativo'); END;
             """
         )
         conn.commit()
@@ -211,8 +225,29 @@ def listar_itens():
         conn.close()
 
 
+def _validar_data_iso(data_iso):
+    """Levanta ValueError se nao for uma data ISO (aaaa-mm-dd) real."""
+    try:
+        datetime.datetime.strptime(str(data_iso), "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"Data invalida: {data_iso!r}") from None
+
+
+def _validar_numero(valor, nome, minimo_exclusivo=None, minimo=None):
+    """Levanta ValueError se 'valor' nao for numero finito dentro do limite."""
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)) or not math.isfinite(valor):
+        raise ValueError(f"{nome} invalido: {valor!r}")
+    if minimo_exclusivo is not None and valor <= minimo_exclusivo:
+        raise ValueError(f"{nome} deve ser maior que {minimo_exclusivo}: {valor!r}")
+    if minimo is not None and valor < minimo:
+        raise ValueError(f"{nome} nao pode ser menor que {minimo}: {valor!r}")
+
+
 def inserir(tabela, nome):
-    """Insere um registro em filiais ou departamentos. Retorna True ou False."""
+    """Insere em filiais ou departamentos. Retorna True, ou False se o nome ja existe.
+
+    Qualquer outra falha do banco e propagada (nao se confunde com duplicado).
+    """
     _validar_tabela(tabela)
     conn = get_conn()
     try:
@@ -224,14 +259,19 @@ def inserir(tabela, nome):
         logger.warning("IntegrityError ao inserir em %r (%r): %s", tabela, nome, exc)
         return False
     except Exception:
+        # Falha do banco (lock, disco, ...) nao e nome duplicado: propaga.
         logger.exception("Erro inesperado ao inserir em %r (%r)", tabela, nome)
-        return False
+        raise
     finally:
         conn.close()
 
 
 def inserir_item(nome, tipo, estoque_minimo):
-    """Insere um item. Retorna True ou False."""
+    """Insere um item. Retorna True ou False (nome duplicado).
+
+    Levanta ValueError se o estoque minimo for negativo ou nao for numero finito.
+    """
+    _validar_numero(estoque_minimo, "Estoque minimo", minimo=0)
     conn = get_conn()
     try:
         conn.execute(
@@ -271,7 +311,17 @@ def excluir(tabela, item_id):
 
 
 def inserir_entrada(data_iso, item_id, quantidade, fornecedor, valor_unitario, observacao):
-    """Registra uma entrada de estoque (compra)."""
+    """Registra uma entrada de estoque (compra).
+
+    Levanta ValueError para dado invalido (data impossivel, quantidade nao
+    positiva ou nao finita, valor negativo) e sqlite3.Error para falha do banco
+    (inclui IntegrityError de item inexistente). Quem chama deve tratar: retorno
+    normal significa que a entrada foi gravada.
+    """
+    _validar_data_iso(data_iso)
+    _validar_numero(quantidade, "Quantidade", minimo_exclusivo=0)
+    if valor_unitario is not None:
+        _validar_numero(valor_unitario, "Valor unitario", minimo=0)
     conn = get_conn()
     try:
         conn.execute(
@@ -280,18 +330,24 @@ def inserir_entrada(data_iso, item_id, quantidade, fornecedor, valor_unitario, o
             (data_iso, item_id, quantidade, fornecedor or None, valor_unitario, observacao or None),
         )
         conn.commit()
-    except Exception:
+    except sqlite3.Error:
         logger.exception(
-            "Erro inesperado ao inserir entrada (item_id=%s, qtd=%s)",
-            item_id, quantidade,
+            "Erro ao inserir entrada (item_id=%s, qtd=%s)", item_id, quantidade,
         )
+        raise
     finally:
         conn.close()
 
 
 def inserir_despacho(data_iso, filial_id, departamento_id, item_id, quantidade,
                      numero_chamado, recebido_por, observacao):
-    """Registra um despacho para filial."""
+    """Registra um despacho para filial.
+
+    Mesmo contrato de inserir_entrada: ValueError para dado invalido,
+    sqlite3.Error para falha do banco; retorno normal = gravado.
+    """
+    _validar_data_iso(data_iso)
+    _validar_numero(quantidade, "Quantidade", minimo_exclusivo=0)
     conn = get_conn()
     try:
         conn.execute(
@@ -303,11 +359,12 @@ def inserir_despacho(data_iso, filial_id, departamento_id, item_id, quantidade,
              numero_chamado or None, recebido_por or None, observacao or None),
         )
         conn.commit()
-    except Exception:
+    except sqlite3.Error:
         logger.exception(
-            "Erro inesperado ao inserir despacho (item_id=%s, filial=%s, qtd=%s)",
+            "Erro ao inserir despacho (item_id=%s, filial=%s, qtd=%s)",
             item_id, filial_id, quantidade,
         )
+        raise
     finally:
         conn.close()
 
@@ -374,8 +431,9 @@ def estoque_atual():
             })
         return result
     except Exception:
+        # Propaga: [] seria exibido como "estoque vazio" quando o banco falhou.
         logger.exception("Erro ao calcular estoque atual")
-        return []
+        raise
     finally:
         conn.close()
 

@@ -57,11 +57,18 @@ class EntradaState(EstadoBase):
     def salvar(self, form_data: dict):
         # Usa data atual automaticamente (timestamp)
         data_iso = db.hoje_iso()
-        item_id = (form_data.get("item_id") or "").strip()
-        qtd_str = (form_data.get("quantidade") or "").strip()
-        fornecedor = (form_data.get("fornecedor") or "").strip()
-        valor_str = (form_data.get("valor_unitario") or "").strip()
-        observacao = (form_data.get("observacao") or "").strip()
+
+        def campo(chave):
+            # So texto e aceito: um payload com lista/numero vira campo vazio
+            # (e cai na validacao) em vez de quebrar o handler no .strip().
+            valor = form_data.get(chave)
+            return valor.strip() if isinstance(valor, str) else ""
+
+        item_id = campo("item_id")
+        qtd_str = campo("quantidade")
+        fornecedor = campo("fornecedor")
+        valor_str = campo("valor_unitario")
+        observacao = campo("observacao")
 
         # Valida item: deve existir entre os itens reais do banco
         item = next((i for i in self.itens if str(i["id"]) == item_id), None)
@@ -97,6 +104,10 @@ class EntradaState(EstadoBase):
             db.inserir_entrada(
                 data_iso, item["id"], qtd, fornecedor, valor, observacao
             )
+        except ValueError as exc:
+            logger.warning("Entrada recusada (item_id=%s): %s", item["id"], exc)
+            self.notificar(str(exc), "error")
+            return
         except Exception:
             logger.exception(
                 "Erro ao registrar entrada (item_id=%s, qtd=%s, valor=%s)",

@@ -35,6 +35,25 @@ class RelatoriosState(EstadoBase):
     filtro_item: str = ""
     csv_pronto: str = ""
 
+    @staticmethod
+    def _mascara_data(valor: str) -> str:
+        """Aplica mascara dd/mm/aaaa: insere barras automaticamente."""
+        digitos = "".join(c for c in valor if c.isdigit())
+        digitos = digitos[:8]
+        if len(digitos) > 4:
+            return f"{digitos[:2]}/{digitos[2:4]}/{digitos[4:]}"
+        if len(digitos) > 2:
+            return f"{digitos[:2]}/{digitos[2:]}"
+        return digitos
+
+    @rx.event
+    def set_filtro_de(self, valor: str):
+        self.filtro_de = self._mascara_data(valor)
+
+    @rx.event
+    def set_filtro_ate(self, valor: str):
+        self.filtro_ate = self._mascara_data(valor)
+
     @rx.event
     def carregar(self):
         try:
@@ -81,7 +100,11 @@ class RelatoriosState(EstadoBase):
         if item and item != "(Todos)":
             filtro["item"] = item
 
-        self._aplicar(filtro)
+        try:
+            self._aplicar(filtro)
+        except Exception:
+            logger.exception("Erro ao filtrar relatorio")
+            self.notificar("Erro ao consultar o relatorio. Tente novamente.", "error")
 
     def _aplicar(self, filtro: dict):
         """Consulta e agrega os resultados do relatorio."""
@@ -109,26 +132,23 @@ class RelatoriosState(EstadoBase):
         )
 
         # Agrega por (filial, departamento), somando na unidade de exibicao
+        # Nunca soma ml com un: cada (filial, depto) guarda um total por unidade.
         by = {}
-        unid_by = {}
         for r in self.rows:
             chave = (r["filial"], r["departamento"])
-            by[chave] = by.get(chave, 0) + r["qtd_display"]
-            u = unidade_despacho_do_tipo(r["tipo"])
-            unid_by.setdefault(chave, set()).add("ml" if u == "ml" else "un")
+            u = "ml" if unidade_despacho_do_tipo(r["tipo"]) == "ml" else "un"
+            totais = by.setdefault(chave, {"ml": 0, "un": 0})
+            totais[u] += r["qtd_display"]
         agreg = []
-        for (filial, depto), total in by.items():
-            unids = unid_by[(filial, depto)]
-            suf = (
-                "ml"
-                if unids == {"ml"}
-                else ("un" if unids == {"un"} else "")
-            )
+        for (filial, depto), totais in by.items():
+            partes = [
+                f"{numero_br(totais[u])} {u}" for u in ("un", "ml") if totais[u]
+            ]
             agreg.append({
                 "filial": filial,
                 "departamento": depto,
-                "total": total,
-                "total_txt": f"{numero_br(total)} {suf}".strip(),
+                "total": totais["un"] + totais["ml"],  # so para ordenar
+                "total_txt": " + ".join(partes),
             })
         self.agregados = sorted(agreg, key=lambda x: -x["total"])
 
@@ -140,12 +160,16 @@ class RelatoriosState(EstadoBase):
             filtro = {}
             if self.filtro_de:
                 iso = db.to_iso(self.filtro_de)
-                if iso:
-                    filtro["de"] = iso
+                if not iso:
+                    self.notificar("Data 'De' invalida. Corrija antes de exportar.", "error")
+                    return
+                filtro["de"] = iso
             if self.filtro_ate:
                 iso = db.to_iso(self.filtro_ate)
-                if iso:
-                    filtro["ate"] = iso
+                if not iso:
+                    self.notificar("Data 'Ate' invalida. Corrija antes de exportar.", "error")
+                    return
+                filtro["ate"] = iso
             if self.filtro_filial and self.filtro_filial != "(Todas)":
                 filtro["filial"] = self.filtro_filial
             if self.filtro_departamento and self.filtro_departamento != "(Todos)":

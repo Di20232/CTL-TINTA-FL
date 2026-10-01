@@ -13,6 +13,7 @@ evitando divergencia entre telas e no CSV exportado.
 """
 
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +80,14 @@ def unidade_item(item):
 
 # Normalizacao de entrada: converte virgula decimal em ponto, aceita inteiro.
 def _numero_do_form(value):
-    """Converte o texto do input (',' decimal) em float. Retorna None se invalido."""
+    """Converte o texto do input (',' decimal) em float. Retorna None se invalido
+    (inclui NaN e infinito, que float() aceita mas nao sao quantidades)."""
     try:
-        return float((value or "").replace(",", ".").strip())
+        numero = float((value or "").replace(",", ".").strip())
+        if not math.isfinite(numero):
+            logger.debug("_numero_do_form: valor nao finito (%r)", value)
+            return None
+        return numero
     except ValueError:
         logger.debug(
             "_numero_do_form: valor invalido recebido do formulario (%r)", value

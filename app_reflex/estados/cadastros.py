@@ -126,6 +126,9 @@ class CadastrosState(EstadoBase):
                 )
                 self.notificar("Estoque minimo deve ser um numero.", "error")
                 return
+            if minimo < 0:
+                self.notificar("Estoque minimo nao pode ser negativo.", "error")
+                return
 
         if not nome:
             self.notificar("Digite um nome para o item.", "error")

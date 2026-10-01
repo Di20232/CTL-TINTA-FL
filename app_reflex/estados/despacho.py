@@ -124,7 +124,9 @@ class DespachoState(EstadoBase):
             self.saldo_txt = formatar_saldo_duplo(saldo, item["tipo"])
 
             # Estoques negativos exigem confirmacao explicita
-            if qtd_l > saldo and not self.confirmacao_pendente:
+            # Sem excecao para confirmacao_pendente: reenviar o formulario nunca
+            # equivale a confirmar; so confirmar() grava com saldo insuficiente.
+            if qtd_l > saldo:
                 self.confirmacao_pendente = True
                 self.dados_pendentes = {
                     "data": data_br,

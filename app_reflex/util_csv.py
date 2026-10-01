@@ -17,6 +17,15 @@ from app_reflex.util_unidade import (
 )
 
 
+def _celula_segura(valor):
+    """Neutraliza injecao de formula: texto iniciado por = + - @ (ou tab/CR) vira
+    texto literal no Excel/Calc, prefixado com apostrofo."""
+    texto = "" if valor is None else str(valor)
+    if texto.lstrip().startswith(("=", "+", "-", "@")) or texto[:1] in ("\t", "\r"):
+        return "'" + texto
+    return texto
+
+
 def gerar_csv_relatorio(filtro):
     """Gera o conteudo CSV (str com BOM) dos despachos filtrados.
 
@@ -48,9 +57,10 @@ def gerar_csv_relatorio(filtro):
             quantidade_csv = numero_br(r["quantidade"])
             unidade_csv = "un"
         w.writerow([
-            db.to_display(r["data"]), r["filial"], r["departamento"],
-            r["item"], quantidade_csv, unidade_csv,
-            r["numero_chamado"] or "", r["recebido_por"] or "",
+            db.to_display(r["data"]), _celula_segura(r["filial"]),
+            _celula_segura(r["departamento"]), _celula_segura(r["item"]),
+            quantidade_csv, unidade_csv,
+            _celula_segura(r["numero_chamado"]), _celula_segura(r["recebido_por"]),
         ])
 
     conteudo = output.getvalue()
