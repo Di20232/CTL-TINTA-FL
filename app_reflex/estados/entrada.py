@@ -3,6 +3,7 @@
 """Estado da pagina de Entrada de estoque."""
 
 import logging
+import math
 
 import reflex as rx
 
@@ -98,6 +99,12 @@ class EntradaState(EstadoBase):
                     item.get("nome"), valor_str, exc,
                 )
                 self.notificar("Valor unitario invalido.", "error")
+                return
+            if not math.isfinite(valor):
+                self.notificar("Valor unitario invalido.", "error")
+                return
+            if valor < 0:
+                self.notificar("Valor unitario nao pode ser negativo.", "error")
                 return
 
         try:
