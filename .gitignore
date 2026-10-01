@@ -58,3 +58,5 @@ resumo*
 
 # Claude Code
 .claude/settings.local.json
+*.db-wal
+*.db-shm
