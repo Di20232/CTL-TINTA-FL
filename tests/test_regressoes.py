@@ -176,6 +176,15 @@ class TestFalhasBanco(BancoTemporario):
     def test_item_rejeita_minimo_negativo(self):
         self.assert_rejeita_sem_gravar(lambda: db.inserir_item("Invalido", "Toner", -1), "itens")
 
+    def test_entrada_rejeita_data_iso_nao_canonica(self):
+        # strptime aceita "2026-9-1"; gravada assim, quebraria ordenacao e filtros.
+        for data in ("2026-9-1", "2026-09-1", "2026-9-01", "2026/09/01", " 2026-09-01"):
+            with self.subTest(data=data):
+                self.assert_rejeita_sem_gravar(
+                    lambda: db.inserir_entrada(data, 1, 1, "", None, ""), "entradas"
+                )
+        self.assertIsNone(db.inserir_entrada("2026-09-01", 1, 1, "", None, ""))
+
     def test_entrada_rejeita_data_impossivel(self):
         self.assert_rejeita_sem_gravar(
             lambda: db.inserir_entrada("2026-02-31", 1, 1, "", None, ""), "entradas"

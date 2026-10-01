@@ -25,7 +25,7 @@ class RelatoriosState(EstadoBase):
     total_qtd: int = 0
     total_ml: str = "0"       # soma das tintas DESPACHADAS em ml (exibicao)
     total_unidades: int = 0
-    agregados: list[dict] = []  # cada: {filial, departamento, total}
+    agregados: list[dict] = []  # cada: {filial, departamento, total_txt}
 
     # Filtros (datas em BR p/ exibicao no input)
     filtro_de: str = ""
@@ -104,6 +104,13 @@ class RelatoriosState(EstadoBase):
             self._aplicar(filtro)
         except Exception:
             logger.exception("Erro ao filtrar relatorio")
+            # Nao deixa na tela o resultado de uma consulta anterior como se
+            # fosse o do filtro atual.
+            self.rows = []
+            self.agregados = []
+            self.total_qtd = 0
+            self.total_ml = "0"
+            self.total_unidades = 0
             self.notificar("Erro ao consultar o relatorio. Tente novamente.", "error")
 
     def _aplicar(self, filtro: dict):
@@ -139,18 +146,19 @@ class RelatoriosState(EstadoBase):
             u = "ml" if unidade_despacho_do_tipo(r["tipo"]) == "ml" else "un"
             totais = by.setdefault(chave, {"ml": 0, "un": 0})
             totais[u] += r["qtd_display"]
+        # Ordena por (un, ml) decrescente, sem somar unidades diferentes.
         agreg = []
         for (filial, depto), totais in by.items():
             partes = [
                 f"{numero_br(totais[u])} {u}" for u in ("un", "ml") if totais[u]
             ]
-            agreg.append({
+            ordem = (-totais["un"], -totais["ml"], str(filial), str(depto))
+            agreg.append((ordem, {
                 "filial": filial,
                 "departamento": depto,
-                "total": totais["un"] + totais["ml"],  # so para ordenar
                 "total_txt": " + ".join(partes),
-            })
-        self.agregados = sorted(agreg, key=lambda x: -x["total"])
+            }))
+        self.agregados = [linha for _, linha in sorted(agreg, key=lambda x: x[0])]
 
     @rx.event
     def exportar_csv(self):

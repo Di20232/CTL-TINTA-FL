@@ -226,11 +226,18 @@ def listar_itens():
 
 
 def _validar_data_iso(data_iso):
-    """Levanta ValueError se nao for uma data ISO (aaaa-mm-dd) real."""
+    """Levanta ValueError se nao for uma data ISO canonica (aaaa-mm-dd) real.
+
+    strptime aceita '2024-1-1'; o round-trip exige o formato exato, pois o resto
+    do app ordena e filtra datas como texto.
+    """
+    texto = str(data_iso)
     try:
-        datetime.datetime.strptime(str(data_iso), "%Y-%m-%d")
+        data = datetime.datetime.strptime(texto, "%Y-%m-%d")
     except ValueError:
         raise ValueError(f"Data invalida: {data_iso!r}") from None
+    if data.strftime("%Y-%m-%d") != texto:
+        raise ValueError(f"Data invalida: {data_iso!r}")
 
 
 def _validar_numero(valor, nome, minimo_exclusivo=None, minimo=None):

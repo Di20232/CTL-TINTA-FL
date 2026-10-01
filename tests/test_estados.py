@@ -159,6 +159,36 @@ class TestEstados(BancoTemporario):
         self.assertIn("500 ml", texto)
         self.assertIn("3 un", texto)
 
+    def test_agregados_ordenam_por_unidade_sem_somar_ml_com_un(self):
+        # Filial B: 2 un + 900 ml. Filial A: 1 un + 100 ml. Somar daria B > A pelo
+        # ml; por (un, ml) B tambem lidera, mas o criterio nunca mistura unidades.
+        with closing(db.get_conn()) as conn, conn:
+            conn.execute("INSERT INTO filiais (id, nome) VALUES (2, 'Filial B')")
+        self.entrada(10)
+        self.entrada(5, item_id=2)
+        self.despacho(1, filial_id=1)          # A: 1 un
+        self.despacho(0.1, item_id=2, filial_id=1)  # A: 100 ml
+        self.despacho(2, filial_id=2)          # B: 2 un
+        self.despacho(0.9, item_id=2, filial_id=2)  # B: 900 ml
+        estado = self.estado_relatorio()
+        estado._aplicar({})
+        self.assertEqual([a["filial"] for a in estado.agregados], ["Filial B", "Filial teste"])
+        self.assertEqual(estado.agregados[0]["total_txt"], "2 un + 900 ml")
+        self.assertNotIn("total", estado.agregados[0])
+
+    def test_filtrar_com_erro_limpa_resultado_anterior(self):
+        self.entrada(10)
+        self.despacho(3)
+        estado = self.estado_relatorio()
+        estado._aplicar({})
+        self.assertTrue(estado.rows and estado.agregados)
+        with patch("db.relatorio_despachos", side_effect=OSError("falha simulada")):
+            funcao_original(self.relatorios_cls, "filtrar")(estado, {})
+        self.assertEqual(estado.tipo_msg, "error")
+        self.assertEqual(estado.rows, [])
+        self.assertEqual(estado.agregados, [])
+        self.assertEqual((estado.total_qtd, estado.total_ml, estado.total_unidades), (0, "0", 0))
+
     def test_exportacao_nao_ignora_data_invalida(self):
         estado = self.estado_relatorio()
         estado.filtro_de = "31/02/2026"
