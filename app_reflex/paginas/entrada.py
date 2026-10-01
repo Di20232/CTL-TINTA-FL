@@ -55,7 +55,7 @@ def entrada() -> rx.Component:
                                         required=True,
                                         width="100%",
                                         background="white",
-                                        color="#f7f7f7",
+                                        color="#1e293b",
                                     ),
                                     align="start",
                                     spacing="2",

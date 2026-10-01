@@ -70,13 +70,13 @@ def _bloco_filtros() -> rx.Component:
             rx.grid(
                 rx.vstack(
                     rx.text("De (dd/mm/aaaa)", font_size="0.75rem", font_weight="500", color="#64748b"),
-                    rx.input(name="de", placeholder="Ex: 01/01/2025", value=page.filtro_de, width="100%"),
+                    rx.input(name="de", placeholder="Ex: 01/01/2025", value=page.filtro_de, on_change=page.set_filtro_de, max_length=10, width="100%"),
                     align="start",
                     spacing="2",
                 ),
                 rx.vstack(
                     rx.text("Ate (dd/mm/aaaa)", font_size="0.75rem", font_weight="500", color="#64748b"),
-                    rx.input(name="ate", placeholder="Ex: 31/12/2025", value=page.filtro_ate, width="100%"),
+                    rx.input(name="ate", placeholder="Ex: 31/12/2025", value=page.filtro_ate, on_change=page.set_filtro_ate, max_length=10, width="100%"),
                     align="start",
                     spacing="2",
                 ),
